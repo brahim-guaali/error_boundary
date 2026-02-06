@@ -139,6 +139,7 @@ class ErrorBoundaryState extends State<ErrorBoundary> {
   int _retryCount = 0;
   Key _childKey = UniqueKey();
   bool _isRecovering = false;
+  FlutterExceptionHandler? _previousErrorHandler;
 
   /// The current error, if any.
   ErrorInfo? get error => _error;
@@ -150,6 +151,59 @@ class ErrorBoundaryState extends State<ErrorBoundary> {
   bool get devMode => widget.devMode ?? kDebugMode;
 
   @override
+  void initState() {
+    super.initState();
+    _setupErrorHandler();
+  }
+
+  @override
+  void dispose() {
+    _restoreErrorHandler();
+    super.dispose();
+  }
+
+  void _setupErrorHandler() {
+    _previousErrorHandler = FlutterError.onError;
+    FlutterError.onError = (FlutterErrorDetails details) {
+      // Check if this error is from our subtree
+      if (_isErrorFromOurSubtree(details)) {
+        _handleFlutterError(details);
+      } else {
+        // Pass to previous handler
+        _previousErrorHandler?.call(details);
+      }
+    };
+  }
+
+  void _restoreErrorHandler() {
+    if (FlutterError.onError == _handleFlutterError) {
+      FlutterError.onError = _previousErrorHandler;
+    }
+  }
+
+  bool _isErrorFromOurSubtree(FlutterErrorDetails details) {
+    // Check if the error context mentions our widget or is from build phase
+    final context = details.context;
+    if (context != null) {
+      final contextString = context.toString();
+      if (contextString.contains('ErrorBoundary')) {
+        return false; // Don't catch our own errors
+      }
+    }
+    // For build errors, we catch them
+    return details.library == 'widgets library' ||
+        details.library == 'rendering library';
+  }
+
+  void _handleFlutterError(FlutterErrorDetails details) {
+    _handleError(
+      details.exception,
+      details.stack ?? StackTrace.current,
+      type: ErrorType.build,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     if (_error != null) {
       return _buildFallback(_error!);
@@ -157,7 +211,10 @@ class ErrorBoundaryState extends State<ErrorBoundary> {
 
     Widget child = KeyedSubtree(
       key: _childKey,
-      child: widget.child,
+      child: _ErrorBoundaryScope(
+        state: this,
+        child: widget.child,
+      ),
     );
 
     if (widget.catchAsync) {
@@ -248,9 +305,7 @@ class ErrorBoundaryState extends State<ErrorBoundary> {
       case RetryRecovery(:final maxAttempts, :final delay, :final backoff):
         if (_retryCount < maxAttempts) {
           _isRecovering = true;
-          final waitTime = backoff
-              ? delay * (1 << _retryCount)
-              : delay;
+          final waitTime = backoff ? delay * (1 << _retryCount) : delay;
           await Future.delayed(waitTime);
           _isRecovering = false;
           retry();
@@ -301,6 +356,21 @@ class ErrorBoundaryState extends State<ErrorBoundary> {
   /// Useful for testing or forcing error UI display.
   void triggerError(Object error, [StackTrace? stackTrace]) {
     _handleError(error, stackTrace ?? StackTrace.current);
+  }
+}
+
+/// InheritedWidget to provide ErrorBoundaryState to descendants.
+class _ErrorBoundaryScope extends InheritedWidget {
+  const _ErrorBoundaryScope({
+    required this.state,
+    required super.child,
+  });
+
+  final ErrorBoundaryState state;
+
+  @override
+  bool updateShouldNotify(_ErrorBoundaryScope oldWidget) {
+    return state != oldWidget.state;
   }
 }
 

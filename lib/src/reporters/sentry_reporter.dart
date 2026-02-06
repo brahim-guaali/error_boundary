@@ -105,12 +105,14 @@ class SentryReporter implements ErrorReporter {
   @override
   Future<void> report(ErrorInfo info) async {
     // Apply beforeSend filter
-    final filteredInfo = beforeSend?.call(info) ?? info;
-    if (beforeSend != null && filteredInfo != info && filteredInfo == null) {
-      return; // Error was filtered out
+    ErrorInfo effectiveInfo = info;
+    if (beforeSend != null) {
+      final filteredInfo = beforeSend!(info);
+      if (filteredInfo == null) {
+        return; // Error was filtered out
+      }
+      effectiveInfo = filteredInfo;
     }
-
-    final effectiveInfo = filteredInfo ?? info;
 
     try {
       // Configure scope with additional context

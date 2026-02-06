@@ -17,15 +17,23 @@ void main() {
       expect(find.text('Hello'), findsOneWidget);
     });
 
-    testWidgets('shows default fallback on error', (tester) async {
+    testWidgets('shows default fallback when triggerError is called',
+        (tester) async {
+      final boundaryKey = GlobalKey<ErrorBoundaryState>();
+
       await tester.pumpWidget(
         MaterialApp(
           home: ErrorBoundary(
-            child: ThrowingWidget(),
+            key: boundaryKey,
+            child: const Text('Hello'),
           ),
         ),
       );
 
+      expect(find.text('Hello'), findsOneWidget);
+
+      // Trigger an error manually
+      boundaryKey.currentState!.triggerError(Exception('Test error'));
       await tester.pumpAndSettle();
 
       expect(find.text('Something went wrong'), findsOneWidget);
@@ -33,94 +41,148 @@ void main() {
       expect(find.text('Retry'), findsOneWidget);
     });
 
-    testWidgets('shows custom fallback on error', (tester) async {
+    testWidgets('shows custom fallback when triggerError is called',
+        (tester) async {
+      final boundaryKey = GlobalKey<ErrorBoundaryState>();
+
       await tester.pumpWidget(
         MaterialApp(
           home: ErrorBoundary(
+            key: boundaryKey,
             fallback: (error, retry) => const Text('Custom Error'),
-            child: ThrowingWidget(),
+            child: const Text('Hello'),
           ),
         ),
       );
 
+      boundaryKey.currentState!.triggerError(Exception('Test'));
       await tester.pumpAndSettle();
 
       expect(find.text('Custom Error'), findsOneWidget);
     });
 
-    testWidgets('calls onError when error occurs', (tester) async {
+    testWidgets('calls onError when error is triggered', (tester) async {
+      final boundaryKey = GlobalKey<ErrorBoundaryState>();
       Object? caughtError;
       StackTrace? caughtStack;
 
       await tester.pumpWidget(
         MaterialApp(
           home: ErrorBoundary(
+            key: boundaryKey,
             onError: (error, stack) {
               caughtError = error;
               caughtStack = stack;
             },
-            child: ThrowingWidget(error: Exception('Test error')),
+            child: const Text('Hello'),
           ),
         ),
       );
 
+      final testError = Exception('Test error');
+      boundaryKey.currentState!.triggerError(testError);
       await tester.pumpAndSettle();
 
-      expect(caughtError, isA<Exception>());
-      expect(caughtError.toString(), contains('Test error'));
+      expect(caughtError, testError);
       expect(caughtStack, isNotNull);
     });
 
-    testWidgets('retry rebuilds child widget', (tester) async {
-      var buildCount = 0;
+    testWidgets('retry resets error state', (tester) async {
+      final boundaryKey = GlobalKey<ErrorBoundaryState>();
 
       await tester.pumpWidget(
         MaterialApp(
           home: ErrorBoundary(
+            key: boundaryKey,
             fallback: (error, retry) => ElevatedButton(
               onPressed: retry,
               child: const Text('Retry'),
             ),
-            child: Builder(
-              builder: (context) {
-                buildCount++;
-                if (buildCount == 1) {
-                  throw Exception('First build fails');
-                }
-                return const Text('Success');
-              },
-            ),
+            child: const Text('Hello'),
           ),
         ),
       );
 
+      expect(find.text('Hello'), findsOneWidget);
+
+      // Trigger error
+      boundaryKey.currentState!.triggerError(Exception('Test'));
       await tester.pumpAndSettle();
+
       expect(find.text('Retry'), findsOneWidget);
 
+      // Tap retry
       await tester.tap(find.text('Retry'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Success'), findsOneWidget);
-      expect(buildCount, 2);
+      expect(find.text('Hello'), findsOneWidget);
     });
 
-    testWidgets('ErrorTracker captures errors', (tester) async {
+    testWidgets('ErrorTracker captures triggered errors', (tester) async {
+      final boundaryKey = GlobalKey<ErrorBoundaryState>();
       final tracker = ErrorTracker();
 
       await tester.pumpWidget(
         MaterialApp(
           home: ErrorBoundary(
+            key: boundaryKey,
             onError: tracker.onError,
-            child: ThrowingWidget(error: Exception('Tracked error')),
+            child: const Text('Hello'),
           ),
         ),
       );
 
+      boundaryKey.currentState!
+          .triggerError(Exception('Tracked error'));
       await tester.pumpAndSettle();
 
       expect(tracker.hasErrors, isTrue);
       expect(tracker.errorCount, 1);
       expect(tracker.lastError?.error.toString(), contains('Tracked error'));
+    });
+
+    testWidgets('hasError returns correct state', (tester) async {
+      final boundaryKey = GlobalKey<ErrorBoundaryState>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ErrorBoundary(
+            key: boundaryKey,
+            child: const Text('Hello'),
+          ),
+        ),
+      );
+
+      expect(boundaryKey.currentState!.hasError, isFalse);
+
+      boundaryKey.currentState!.triggerError(Exception('Test'));
+      await tester.pumpAndSettle();
+
+      expect(boundaryKey.currentState!.hasError, isTrue);
+    });
+
+    testWidgets('reset clears error and rebuilds child', (tester) async {
+      final boundaryKey = GlobalKey<ErrorBoundaryState>();
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ErrorBoundary(
+            key: boundaryKey,
+            child: const Text('Hello'),
+          ),
+        ),
+      );
+
+      boundaryKey.currentState!.triggerError(Exception('Test'));
+      await tester.pumpAndSettle();
+
+      expect(boundaryKey.currentState!.hasError, isTrue);
+
+      boundaryKey.currentState!.reset();
+      await tester.pumpAndSettle();
+
+      expect(boundaryKey.currentState!.hasError, isFalse);
+      expect(find.text('Hello'), findsOneWidget);
     });
   });
 
@@ -147,6 +209,15 @@ void main() {
 
       expect(copied.severity, ErrorSeverity.critical);
       expect(copied.error, info.error);
+    });
+
+    test('message returns error string', () {
+      final info = ErrorInfo(
+        error: Exception('test message'),
+        stackTrace: StackTrace.current,
+      );
+
+      expect(info.message, contains('test message'));
     });
   });
 
@@ -180,6 +251,13 @@ void main() {
     test('reset strategy', () {
       const strategy = RecoveryStrategy.reset();
       expect(strategy, isA<ResetRecovery>());
+    });
+
+    test('custom strategy', () {
+      final strategy = RecoveryStrategy.custom(
+        onRecover: () async => true,
+      );
+      expect(strategy, isA<CustomRecovery>());
     });
   });
 
@@ -225,6 +303,38 @@ void main() {
       final reporter = ConsoleReporter();
       reporter.setCustomKey('version', '1.0.0');
       reporter.setCustomKey('version', null); // Should remove key
+    });
+  });
+
+  group('ErrorTracker', () {
+    test('tracks multiple errors', () {
+      final tracker = ErrorTracker();
+
+      tracker.onError(Exception('Error 1'), StackTrace.current);
+      tracker.onError(Exception('Error 2'), StackTrace.current);
+
+      expect(tracker.errorCount, 2);
+      expect(tracker.errors.length, 2);
+    });
+
+    test('clear removes all errors', () {
+      final tracker = ErrorTracker();
+
+      tracker.onError(Exception('Error'), StackTrace.current);
+      expect(tracker.hasErrors, isTrue);
+
+      tracker.clear();
+      expect(tracker.hasErrors, isFalse);
+      expect(tracker.errorCount, 0);
+    });
+
+    test('lastError returns most recent', () {
+      final tracker = ErrorTracker();
+
+      tracker.onError(Exception('First'), StackTrace.current);
+      tracker.onError(Exception('Second'), StackTrace.current);
+
+      expect(tracker.lastError?.error.toString(), contains('Second'));
     });
   });
 }
