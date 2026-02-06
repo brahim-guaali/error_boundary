@@ -1,6 +1,8 @@
 # error_boundary
 
 [![pub package](https://img.shields.io/pub/v/error_boundary.svg)](https://pub.dev/packages/error_boundary)
+[![CI](https://github.com/brahim-guaali/error_boundary/actions/workflows/ci.yml/badge.svg)](https://github.com/brahim-guaali/error_boundary/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/brahim-guaali/error_boundary/branch/main/graph/badge.svg)](https://codecov.io/gh/brahim-guaali/error_boundary)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 A robust error boundary widget for Flutter that catches and handles errors gracefully, preventing app crashes and providing fallback UI.
