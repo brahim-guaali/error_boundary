@@ -1,0 +1,21 @@
+name: error_boundary
+description: A robust error boundary widget for Flutter that catches and handles errors gracefully with recovery strategies, error reporting, and testing utilities.
+version: 0.1.0
+repository: https://github.com/brahim-guaali/error_boundary
+issue_tracker: https://github.com/brahim-guaali/error_boundary/issues
+homepage: https://brahimg.com
+
+environment:
+  sdk: ^3.0.0
+  flutter: ">=3.10.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
